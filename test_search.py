@@ -156,6 +156,19 @@ def test_compose():
     good = "🚀 We shipped v2 today.\n\n📈 Latency down 60%\n\n👇 Read more."
     assert enforce_sensitivity(good, post_is_somber=False) == (good, [])
 
+    # An emoji the author already used must not be placed again. The line it sits
+    # on is skipped, so it never entered `used` and could be re-picked.
+    dup = "\U0001F4E2 Big news this week.\n\n- We are hiring backend engineers\n- Revenue up 40%"
+    d = compose_rules(dup)
+    assert d["text"].count("\U0001F4E2") == 1, f"duplicated the author's emoji:\n{d['text']}"
+    # ...including when the author's emoji sits inside a run of several
+    run = "\U0001F680\U0001F389 Big launch!\n\n- We shipped v2 and are hiring\n- Revenue up 40%"
+    rr = compose_rules(run)
+    assert rr["text"].count("\U0001F680") == 1 and rr["text"].count("\U0001F389") == 1, rr["text"]
+
+    # every placement carries the line text, so duplicate emoji are tellable apart
+    assert all(pl.get("text") for pl in d["placements"])
+
     # The LLM path must offer the same swap chips as the rules path. Placements
     # are derived from the composed text, so they carry line numbers too.
     from compose import _llm_placements

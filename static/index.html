@@ -123,7 +123,10 @@
   .why{margin-top:12px;display:flex;flex-direction:column;gap:5px}
   .whyrow{display:flex;gap:9px;align-items:baseline;font-size:12.5px;color:var(--muted);
     background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
-  .whyrow b{font-size:16px;font-weight:400}
+  .whyrow b{font-size:16px;font-weight:400;flex:none}
+  /* the line this placement sits on — identifies the row */
+  .snip{flex:1;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rsn{flex:none;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.75}
   .swap{cursor:pointer;font-size:15px;line-height:1;padding:3px 5px;border-radius:6px;
     border:1px solid transparent}
   .swap:hover{background:var(--accent-soft);border-color:var(--accent)}
@@ -513,11 +516,18 @@ function renderWhy(r){
     const badge = document.createElement("b");
     badge.textContent = p.emoji;
 
+    // Show which line this placement belongs to. Without it, two rows carrying
+    // the same emoji (the model can repeat one) are indistinguishable.
+    const snip = document.createElement("span");
+    snip.className = "snip";
+    snip.textContent = p.text || p.why || "";
+    snip.title = p.why ? `${p.text || ""} — ${p.why}` : (p.text || "");
+
     const reason = document.createElement("span");
-    reason.style.flex = "1";
+    reason.className = "rsn";
     reason.textContent = p.why || "";
 
-    row.append(badge, reason);
+    row.append(badge, snip, reason);
 
     // Include the original alongside the alternatives so a swap is reversible.
     const options = [...new Set([p.emoji, ...(p.alternatives || [])])];

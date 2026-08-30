@@ -213,6 +213,9 @@ def compose_rules(text, density="balanced"):
     budget = DENSITY.get(density, 6)
     lines = segment(text)
     used = set()
+    # Whatever the author already wrote, normalised, for a containment test that
+    # also catches emoji inside a run like "🚀🎉".
+    already = norm_char(text)
 
     # A post that is *mostly* about something hard gets a lighter touch and no
     # celebratory emoji anywhere, even on its upbeat lines.
@@ -243,6 +246,10 @@ def compose_rules(text, density="balanced"):
             ln.why = "skipped: sensitive subject"
             continue
         ranked = _rank_for_line(source, used, kind=ln.kind)
+        # `used` only tracks what we placed. An emoji the author already used
+        # elsewhere would otherwise be placed again — the skipped line never
+        # registered it.
+        ranked = [r for r in ranked if norm_char(r[0]) not in already]
         if post_is_somber:
             ranked = [r for r in ranked if norm_char(r[0]) not in CELEBRATORY]
         ln.candidates = [{"char": c, "why": w} for c, _, w in ranked[:5]]
