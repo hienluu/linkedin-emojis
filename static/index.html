@@ -94,6 +94,10 @@
   .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
   /* composer */
   .cols{display:grid;gap:14px;grid-template-columns:1fr 1fr}
+  /* Grid items default to min-width:auto, so a wide, non-shrinking child (the
+     nowrap placement rows) would push this column past its 1fr share and squash
+     the other one. */
+  .cols > div{min-width:0}
   @media (max-width:760px){.cols{grid-template-columns:1fr}}
   textarea,.out{width:100%;min-height:340px;background:var(--card);color:var(--ink);
     border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14.5px;line-height:1.6;
@@ -121,12 +125,16 @@
   .seg button[aria-pressed="true"]{background:var(--accent);color:#fff;font-weight:600}
   .seg button:disabled{opacity:.45;cursor:not-allowed}
   .why{margin-top:12px;display:flex;flex-direction:column;gap:5px}
-  .whyrow{display:flex;gap:9px;align-items:baseline;font-size:12.5px;color:var(--muted);
-    background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  .whyrow{display:flex;flex-wrap:wrap;gap:9px;align-items:baseline;font-size:12.5px;
+    color:var(--muted);background:var(--card);border:1px solid var(--line);
+    border-radius:8px;padding:6px 10px}
   .whyrow b{font-size:16px;font-weight:400;flex:none}
   /* the line this placement sits on — identifies the row */
   .snip{flex:1;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rsn{flex:none;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.75}
+  /* flex:0 1 auto + min-width:0 so it ellipsizes instead of demanding its width */
+  .rsn{flex:0 1 auto;min-width:0;max-width:34%;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;opacity:.75}
+  .whyrow{min-width:0}
   .swap{cursor:pointer;font-size:15px;line-height:1;padding:3px 5px;border-radius:6px;
     border:1px solid transparent}
   .swap:hover{background:var(--accent-soft);border-color:var(--accent)}
