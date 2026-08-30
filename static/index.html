@@ -633,10 +633,11 @@ async function runCompose(){
     });
     const r = await res.json();
     if (!res.ok){
-      // Over budget or rate-limited: fall back to the free path rather than
-      // leaving the user with nothing.
-      if (res.status === 429 && mode === "llm"){
-        const why = r.detail || "LLM limit reached.";
+      // ANY llm failure falls back to the free path rather than leaving the user
+      // with nothing: our own budget (429), the provider's quota or outage (502),
+      // a missing token (403), or an unconfigured deployment (503).
+      if (mode === "llm"){
+        const why = r.detail || "LLM mode is unavailable right now.";
         mode = "rules";
         $("#modeSeg").querySelectorAll("button").forEach(
           b => b.setAttribute("aria-pressed", b.dataset.mode === "rules"));
