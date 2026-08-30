@@ -559,6 +559,11 @@ async function runCompose(){
     (llm ? '<span class="sub">usually a second or two</span>' : "") +
     "</div>";
   $("#ccount").textContent = "";
+  // Clear the previous run's placement rows and banner. They describe emoji that
+  // are no longer on screen, and their swap chips would edit a result that is
+  // about to be replaced.
+  $("#why").replaceChildren();
+  banner("", "");
   try {
     // LLM mode is rate-limited and budgeted server-side; it needs a fresh
     // single-use token. Rules mode is free and ungated.
@@ -577,11 +582,14 @@ async function runCompose(){
       // Over budget or rate-limited: fall back to the free path rather than
       // leaving the user with nothing.
       if (res.status === 429 && mode === "llm"){
-        banner(`${r.detail || "LLM limit reached."} Showing rule-based placement instead.`, "warn");
+        const why = r.detail || "LLM limit reached.";
         mode = "rules";
         $("#modeSeg").querySelectorAll("button").forEach(
           b => b.setAttribute("aria-pressed", b.dataset.mode === "rules"));
-        return runCompose();
+        // Banner goes up *after* the retry, since the retry clears it on entry.
+        await runCompose();
+        banner(`${why} Showing rule-based placement instead.`, "warn");
+        return;
       }
       banner(r.detail || "Something went wrong.", "warn");
       $("#ccount").textContent = "";
@@ -604,8 +612,15 @@ async function runCompose(){
     // If we bailed out (error, or the 429 retry already rendered), don't leave
     // the spinner sitting in the panel.
     if ($("#dst").querySelector(".loading")){
-      if (lastResult) $("#dst").textContent = lastResult.text;
-      else $("#dst").innerHTML = '<span class="ph">Your post with emoji will appear here.</span>';
+      // We bailed out. Put the previous result back complete with its rows,
+      // rather than leaving a spinner or a half-restored panel.
+      if (lastResult){
+        $("#dst").textContent = lastResult.text;
+        $("#ccount").textContent = `${lastResult.count} emoji`;
+        renderWhy(lastResult);
+      } else {
+        $("#dst").innerHTML = '<span class="ph">Your post with emoji will appear here.</span>';
+      }
     }
     syncComposeButtons();   // not a blanket re-enable: respects empty input
   }
