@@ -139,7 +139,16 @@
   .fb .vote[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
     border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  .spin.lg{width:22px;height:22px;border-width:3px;vertical-align:0}
+  /* spinner on the accent-filled button needs light contrast */
+  .btn.primary .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff}
   @keyframes sp{to{transform:rotate(360deg)}}
+  /* Loading state inside the output panel — where the user is actually looking. */
+  .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:12px;min-height:180px;color:var(--muted);font-size:14px;text-align:center}
+  .loading .sub{font-size:12.5px;opacity:.8}
+  .out.busy{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  #go .spin{margin-right:7px}
 </style>
 </head>
 <body>
@@ -452,6 +461,7 @@ $("#tab-compose").onclick = () => showTab("compose");
 
 /* ------------------------------------------------------------ composer */
 let mode = "rules", density = "balanced", lastResult = null;
+const GO_LABEL = "Add emoji";
 
 function segWire(sel, attr, onPick){
   $(sel).querySelectorAll("button").forEach(b => b.onclick = () => {
@@ -537,8 +547,18 @@ async function runCompose(){
   const text = $("#src").value;
   if (!text.trim()){ $("#dst").innerHTML = '<span class="ph">Paste a post first.</span>';
                      $("#why").innerHTML = ""; banner("", ""); return; }
+  // Make the wait unmistakable: the button, the panel and its border all change.
+  // LLM mode takes 1-3s, so it also says what it is waiting on.
+  const llm = mode === "llm";
   $("#go").disabled = true;
-  $("#ccount").innerHTML = '<span class="spin"></span>';
+  $("#go").innerHTML = '<span class="spin"></span>' + (llm ? "Thinking…" : "Adding…");
+  $("#dst").classList.add("busy");
+  $("#dst").innerHTML =
+    '<div class="loading"><span class="spin lg"></span>' +
+    `<span>${llm ? "Asking the model to place your emoji…" : "Placing emoji…"}</span>` +
+    (llm ? '<span class="sub">usually a second or two</span>' : "") +
+    "</div>";
+  $("#ccount").textContent = "";
   try {
     // LLM mode is rate-limited and budgeted server-side; it needs a fresh
     // single-use token. Rules mode is free and ungated.
@@ -579,7 +599,14 @@ async function runCompose(){
   } catch(e){
     banner("Could not reach the server.", "warn");
   } finally {
-    if ($("#ccount").querySelector(".spin")) $("#ccount").textContent = "";
+    $("#go").textContent = GO_LABEL;
+    $("#dst").classList.remove("busy");
+    // If we bailed out (error, or the 429 retry already rendered), don't leave
+    // the spinner sitting in the panel.
+    if ($("#dst").querySelector(".loading")){
+      if (lastResult) $("#dst").textContent = lastResult.text;
+      else $("#dst").innerHTML = '<span class="ph">Your post with emoji will appear here.</span>';
+    }
     syncComposeButtons();   // not a blanket re-enable: respects empty input
   }
 }
