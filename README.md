@@ -91,12 +91,25 @@ alternatives; click one to swap it in.
 
 ### Two guarantees
 
-**Your words are never changed.** Both modes only *insert* emoji.
-`verify_untouched()` proves it by stripping emoji, list markers and whitespace from
-input and output and comparing what remains — so it tolerates a `-` being replaced
-by an emoji, but catches any reworded, added, deleted or altered text (including a
-changed number). If the LLM ever edits your wording, the response carries a
-`warning` and the UI shows it in orange rather than quietly handing you a rewrite.
+**Rule-based mode cannot change your words** — it only ever inserts characters.
+That is structural, not a promise.
+
+**LLM mode is asked not to, and then checked.** `verify_untouched()` strips emoji,
+list markers and whitespace from input and output and compares what remains, so it
+tolerates a `-` being replaced by an emoji but catches any reworded, added, deleted
+or altered text, including a changed number.
+
+Models do occasionally reword — roughly 8% of calls in early usage here. When that
+happens the response carries `changes`, a word-level diff, and the UI names the edit
+rather than vaguely warning that something moved:
+
+> The model changed your wording, not just emoji: "shipped" → "launched";
+> "60%" → "80%". Switch to rule-based to keep your original exactly.
+
+The banner offers a one-click **Use rule-based instead**, which re-runs locally on
+your original text — free and instant. Naming the change matters because the reader
+is scanning emoji placement, not proofreading text they already believe they wrote;
+a swapped word or number is exactly what the eye skips.
 
 **Sensitive posts are not decorated.** `🎉 I got laid off in March` is the failure
 this guards against — and it is a real one; it is what the first version produced.

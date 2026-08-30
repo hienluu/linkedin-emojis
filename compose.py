@@ -477,9 +477,14 @@ def compose_llm(text, density="balanced", model=None):
     result["count"] = len(EMOJI_RE.findall(result["text"])) - len(EMOJI_RE.findall(text))
     result["verified"] = verify_untouched(text, result["text"])
     if not result["verified"]:
+        # Say what changed, not just that something did — otherwise the only
+        # recourse is re-reading your own post word by word.
+        changes = word_diff(text, result["text"])
+        result["changes"] = changes
+        detail = describe_changes(changes) if changes else "spacing or punctuation"
         result["warning"] = (
-            "The model altered the post's wording, not just its emoji. "
-            "Showing its output anyway — compare before posting."
+            f"The model changed your wording, not just emoji: {detail}. "
+            "Switch to rule-based to keep your original exactly."
         )
     return result
 
@@ -508,6 +513,53 @@ def enforce_sensitivity(text, post_is_somber):
         else:
             out.append(line)
     return "\n".join(out), removed
+
+
+def _words(text):
+    """Words only: emoji and list markers become separators."""
+    cleaned = EMOJI_RE.sub(" ", text)
+    cleaned = cleaned.translate({ord(c): " " for c in MARKERS})
+    return cleaned.split()
+
+
+def word_diff(original, composed, limit=6):
+    """Exactly which words changed.
+
+    `verify_untouched` says *that* something changed; on a 1,200-character post
+    that is not actionable, because the reader is scanning emoji placement and
+    already knows what they wrote. A swapped word — or a swapped number — is
+    precisely what the eye skips. So name it.
+    """
+    import difflib
+
+    a, b = _words(original), _words(composed)
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes():
+        if tag == "equal":
+            continue
+        out.append({
+            "op": tag,
+            "from": " ".join(a[i1:i2]),
+            "to": " ".join(b[j1:j2]),
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def describe_changes(changes):
+    """One human-readable sentence naming the edits."""
+    parts = []
+    for c in changes[:3]:
+        if c["from"] and c["to"]:
+            parts.append(f'"{c["from"]}" → "{c["to"]}"')
+        elif c["from"]:
+            parts.append(f'removed "{c["from"]}"')
+        else:
+            parts.append(f'added "{c["to"]}"')
+    more = len(changes) - len(parts)
+    tail = f" (and {more} more)" if more > 0 else ""
+    return "; ".join(parts) + tail
 
 
 def verify_untouched(original, composed):

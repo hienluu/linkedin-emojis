@@ -169,6 +169,29 @@ def test_compose():
     # every placement carries the line text, so duplicate emoji are tellable apart
     assert all(pl.get("text") for pl in d["placements"])
 
+    # When the model edits wording, the user must be told exactly what changed —
+    # "something changed" is not actionable on a long post.
+    from compose import describe_changes, word_diff
+
+    o2 = "We shipped v2 today.\n\n- Latency down 60%\n\nFull writeup in the comments."
+    swapped = "\U0001F680 We launched v2 today.\n\n\U0001F4C9 Latency down 60%\n\n\U0001F447 Full writeup in the comments."
+    ch = word_diff(o2, swapped)
+    assert ch and ch[0]["from"] == "shipped" and ch[0]["to"] == "launched", ch
+    assert "shipped" in describe_changes(ch) and "launched" in describe_changes(ch)
+
+    # a changed number is the dangerous case and must be named
+    numbers = "\U0001F680 We shipped v2 today.\n\n\U0001F4C9 Latency down 80%\n\n\U0001F447 Full writeup in the comments."
+    assert any("60%" in c["from"] and "80%" in c["to"] for c in word_diff(o2, numbers))
+
+    # emoji-only insertion produces no diff at all
+    clean = "\U0001F680 We shipped v2 today.\n\n\U0001F4C9 Latency down 60%\n\n\U0001F447 Full writeup in the comments."
+    assert word_diff(o2, clean) == [], word_diff(o2, clean)
+    assert verify_untouched(o2, clean)
+
+    # additions and removals are described in words, not as opcodes
+    assert "added" in describe_changes(word_diff("a b", "a b c"))
+    assert "removed" in describe_changes(word_diff("a b c", "a b"))
+
     # The LLM path must offer the same swap chips as the rules path. Placements
     # are derived from the composed text, so they carry line numbers too.
     from compose import _llm_placements

@@ -497,8 +497,31 @@ function segWire(sel, attr, onPick){
 segWire("#modeSeg", "mode", v => { mode = v; if ($("#src").value.trim()) runCompose(); });
 segWire("#densSeg", "d",    v => { density = v; if ($("#src").value.trim()) runCompose(); });
 
-function banner(html, cls){
-  $("#cbanner").innerHTML = html ? `<div class="banner ${cls}">${html}</div>` : "";
+// Built with DOM nodes, not innerHTML: the text can contain the user's own words
+// (the diff quotes them back), which must never be interpreted as markup.
+function banner(msg, cls, action){
+  const host = $("#cbanner");
+  host.replaceChildren();
+  if (!msg) return;
+  const box = document.createElement("div");
+  box.className = `banner ${cls}`;
+  box.append(document.createTextNode(msg));
+  if (action){
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = action.label;
+    b.style.cssText = "margin-left:10px;padding:4px 10px;font-size:12.5px";
+    b.onclick = action.fn;
+    box.append(b);
+  }
+  host.append(box);
+}
+
+function useRulesInstead(){
+  mode = "rules";
+  $("#modeSeg").querySelectorAll("button").forEach(
+    b => b.setAttribute("aria-pressed", b.dataset.mode === "rules"));
+  runCompose();
 }
 
 // Swap `from` -> `to` for one placement. Targets the specific line when the
@@ -630,10 +653,12 @@ async function runCompose(){
     $("#dst").textContent = r.text;
     $("#ccount").textContent = `${r.count} emoji`;
     syncComposeButtons();
-    let msgs = [];
+    const msgs = [];
     if (r.note) msgs.push(r.note);
     if (r.warning) msgs.push(r.warning);
-    banner(msgs.join(" "), r.warning ? "warn" : "info");
+    // If the model edited the wording, offer the local path, which cannot.
+    banner(msgs.join(" "), r.warning ? "warn" : "info",
+           r.warning ? {label: "Use rule-based instead", fn: useRulesInstead} : null);
     renderWhy(r);
   } catch(e){
     banner("Could not reach the server.", "warn");
