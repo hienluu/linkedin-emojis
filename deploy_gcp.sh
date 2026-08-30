@@ -26,7 +26,8 @@ args=(
   --memory 512Mi
   --cpu 1
   --min-instances 0                # scale to zero: no idle cost
-  --max-instances 5
+  --max-instances 2                # also bounds the LLM budget: worst case is
+                                   # (per-container limit x instances)
   --concurrency 80
   --timeout 120
 )

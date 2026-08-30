@@ -13,7 +13,7 @@ import modal
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install("fastapi[standard]==0.115.*", "openai>=1.60")
-    .add_local_python_source("app", "search", "concepts", "compose", "config")
+    .add_local_python_source("app", "search", "concepts", "compose", "config", "guard")
     # data/raw holds the ~1.5MB of Unicode source files; only emojis.json is needed at runtime.
     .add_local_dir("data", remote_path="/root/data", ignore=["raw/**", "raw"])
     .add_local_dir("static", remote_path="/root/static")
@@ -35,7 +35,9 @@ secrets = [modal.Secret.from_name("gemini-api-key")]
 @app.function(
     min_containers=0,
     scaledown_window=300,
-    max_containers=5,
+    # guard.py's limits are per container, so this also bounds the LLM budget:
+    # worst case is (per-container limit x containers).
+    max_containers=2,
     secrets=secrets,
     timeout=120,
 )

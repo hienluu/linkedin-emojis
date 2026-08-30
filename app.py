@@ -7,12 +7,13 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import compose as composer
 import config
+import guard
 from search import get_index
 
 ROOT = Path(__file__).parent
@@ -57,28 +58,51 @@ def browse(group: str, limit: int = Query(500, ge=1, le=2000)):
     return {"group": group, "results": get_index().browse(group, limit=limit)}
 
 
+@api.get("/api/token")
+def issue_token(request: Request):
+    """Short-lived single-use token required by LLM mode. See guard.py."""
+    return guard.issue_token(request)
+
+
 @api.post("/api/compose")
 def compose_post(
+    request: Request,
     text: str = Body(..., embed=True, max_length=20000),
     mode: str = Body("rules", embed=True),
     density: str = Body("balanced", embed=True),
+    token: str = Body("", embed=True),
 ):
-    """Return the post with emoji inserted. mode: 'rules' (local) or 'llm' (Gemini)."""
+    """Return the post with emoji inserted. mode: 'rules' (local, free) or 'llm'."""
     if mode not in ("rules", "llm"):
         raise HTTPException(400, "mode must be 'rules' or 'llm'")
-    if mode == "llm" and not composer.llm_available():
-        raise HTTPException(
-            503,
-            "LLM mode is not configured on this deployment. Set LLM_API_KEY "
-            "(plus LLM_BASE_URL and LLM_MODEL for a non-OpenAI provider).",
-        )
+
+    if mode == "llm":
+        if not composer.llm_available():
+            raise HTTPException(
+                503,
+                "LLM mode is not configured on this deployment. Set LLM_API_KEY "
+                "(plus LLM_BASE_URL and LLM_MODEL for a non-OpenAI provider).",
+            )
+        # Only paid requests are gated; rules mode stays open.
+        try:
+            guard.check_llm_request(request, token)
+        except guard.Denied as d:
+            headers = {"Retry-After": str(d.retry_after)} if d.retry_after else None
+            logging.getLogger("uvicorn.error").info(
+                "llm denied (%s): %s", guard.client_ip(request), d.reason)
+            raise HTTPException(d.code, d.reason, headers=headers) from None
+
     try:
         return composer.compose(text, mode=mode, density=density)
     except RuntimeError as e:
         # compose._explain_api_error already produced an actionable message.
+        if mode == "llm":
+            guard.refund()   # the call failed, so it cost nothing
         logging.getLogger("uvicorn.error").warning("compose failed: %s", e)
         raise HTTPException(502, str(e)) from e
     except Exception as e:  # a bad upstream call shouldn't 500 with a stack trace
+        if mode == "llm":
+            guard.refund()
         logging.getLogger("uvicorn.error").exception("compose failed")
         raise HTTPException(502, f"{type(e).__name__}: {e}") from e
 
@@ -98,6 +122,7 @@ def health():
         "llm_provider": d.get("provider"),
         "llm_base_url": d.get("base_url"),
         "notes": config.diagnose(),
+        "usage": guard.status(),
     }
 
 

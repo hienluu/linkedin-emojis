@@ -440,12 +440,29 @@ async function runCompose(){
   $("#go").disabled = true;
   $("#ccount").innerHTML = '<span class="spin"></span>';
   try {
+    // LLM mode is rate-limited and budgeted server-side; it needs a fresh
+    // single-use token. Rules mode is free and ungated.
+    let token = "";
+    if (mode === "llm"){
+      try {
+        token = (await (await fetch("/api/token")).json()).token || "";
+      } catch { /* let the server reject it and explain */ }
+    }
     const res = await fetch("/api/compose", {
       method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({text, mode, density}),
+      body: JSON.stringify({text, mode, density, token}),
     });
     const r = await res.json();
     if (!res.ok){
+      // Over budget or rate-limited: fall back to the free path rather than
+      // leaving the user with nothing.
+      if (res.status === 429 && mode === "llm"){
+        banner(`${r.detail || "LLM limit reached."} Showing rule-based placement instead.`, "warn");
+        mode = "rules";
+        $("#modeSeg").querySelectorAll("button").forEach(
+          b => b.setAttribute("aria-pressed", b.dataset.mode === "rules"));
+        return runCompose();
+      }
       banner(r.detail || "Something went wrong.", "warn");
       $("#ccount").textContent = "";
       return;

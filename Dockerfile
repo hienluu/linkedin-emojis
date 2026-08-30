@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py search.py concepts.py compose.py config.py ./
+COPY app.py search.py concepts.py compose.py config.py guard.py ./
 COPY data/emojis.json ./data/emojis.json
 COPY static/ ./static/
 

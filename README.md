@@ -185,6 +185,52 @@ parsing (code fences, surrounding prose) if a provider doesn't support that flag
 so an endpoint not listed above still works. `GET /api/health` reports the resolved
 provider, model and base URL; it never returns the key.
 
+### Protecting the paid endpoint
+
+Rules mode is free and stays open. `mode=llm` costs money, so on a public
+deployment it passes through `guard.py` first — three layers, weakest to
+strongest guarantee:
+
+1. **Origin check + signed single-use token.** The page fetches a short-lived
+   HMAC token bound to the caller's IP; `/api/compose` requires an unused one and
+   a matching `Origin`. This stops casual scripts and cross-site abuse.
+2. **Per-IP rate limit** — default 5/min and 50/day.
+3. **Global budget** — default 60/hour and 300/day.
+
+Over any limit the API returns 429 and **the UI silently falls back to rules
+mode**, so the app keeps working; it just stops spending.
+
+Be clear about what layer 1 is worth: **nothing a browser sends can prove it came
+from a browser.** A determined caller can replay the token handshake. Layers 1 and
+2 are friction; layer 3 is the one that actually caps your bill, because it is
+arithmetic rather than detection. Size it to a number you would be happy to pay.
+
+| Variable | Default | |
+|---|---|---|
+| `LLM_MAX_PER_HOUR` | 60 | global hourly cap |
+| `LLM_MAX_PER_DAY` | 300 | global daily cap |
+| `LLM_MAX_PER_IP_MIN` | 5 | per-IP burst |
+| `LLM_MAX_PER_IP_DAY` | 50 | per-IP daily |
+| `LLM_TOKEN_TTL` | 300 | token lifetime, seconds |
+| `LLM_REQUIRE_ORIGIN` | 1 | set `0` to allow direct API calls |
+| `ALLOWED_ORIGINS` | *(same-origin)* | comma-separated extra origins |
+| `GUARD_SECRET` | random per process | token signing key |
+
+**Limits are per container.** Cloud Run and Modal may run several, so the real
+ceiling is roughly `limit x max instances`. Both deployments cap instances at **2**
+(`--max-instances 2`, `max_containers=2`), so the worst case is 2x the numbers
+above — about 120 LLM calls/hour and 600/day. Exact global limits would need
+shared state (Firestore/Redis); this is deliberately in-memory and approximate.
+Lower the instance cap or the per-container limits to tighten it further.
+
+**Set a quota cap on the provider key too.** The app can only protect calls that
+go through the app. A spend limit or rate quota on the key itself (Google AI
+Studio / Cloud Console) is the backstop if anything here is bypassed or
+misconfigured. Do that regardless of what the app does.
+
+`GET /api/health` reports current usage (`llm_calls_this_hour`, `denied`, …) for
+monitoring.
+
 **`.env` is for local development only.** Deployments get these from a Modal secret
 or GCP Secret Manager — never from a file. Three properties enforce that:
 
@@ -336,6 +382,7 @@ gcloud will **not** fall back to `.gitignore`, and without that file the entire
   `--allow-unauthenticated` from `deploy_gcp.sh` on Cloud Run.
 - No GPU, no model weights, no database. The index is a ~450 KB JSON file loaded at
   container start, so idle cost is zero on both and cold start is a few seconds.
+- Both deployments cap at 2 instances, which also bounds the LLM spend (see above).
 - Just after a deploy, a warm container can briefly serve the *previous* version.
   If a change seems missing, wait ~20 s before digging in — and stop polling, since
   each request resets Modal's scaledown timer and keeps the old container alive.
@@ -350,7 +397,8 @@ gcloud will **not** fall back to `.gitignore`, and without that file the entire
 | `POST /api/compose` | `{text, mode: "rules"\|"llm", density: "light"\|"balanced"\|"heavy"}` → post with emoji, per-placement reasons, and `verified` |
 | `GET /api/groups` | Category names and counts |
 | `GET /api/browse?group=Objects` | Everything in one category |
-| `GET /api/health` | Index size, and whether LLM mode is configured |
+| `GET /api/token` | Short-lived single-use token required by `mode=llm` |
+| `GET /api/health` | Index size, LLM config, and current usage counters |
 | `GET /api/docs` | OpenAPI |
 
 ```bash
@@ -440,6 +488,7 @@ bare.
 build_dataset.py   Unicode/CLDR -> data/emojis.json   (run occasionally)
 concepts.py        curated LinkedIn vocabulary        (edit this to tune results)
 config.py          env-driven LLM config + `uv run config.py` diagnostics
+guard.py           rate limits, budget cap and request tokens for LLM mode
 search.py          inverted index, ranking, recommendations
 compose.py         post segmentation + placement, rules and LLM backends
 app.py             FastAPI: API + serves the UI

@@ -342,9 +342,136 @@ def test_packaging():
     print(f"ok    packaging checks passed ({', '.join(sorted(needed))})")
 
 
+
+
+
+def test_guard():
+    """Abuse controls on the paid LLM endpoint. No network, no real requests."""
+    import os
+
+    import guard
+
+    class Req:
+        def __init__(self, ip="1.2.3.4", origin="https://app.example", host="app.example"):
+            self.headers = {}
+            if origin:
+                self.headers["origin"] = origin
+            if host:
+                self.headers["host"] = host
+            self.headers["x-forwarded-for"] = f"{ip}, 10.0.0.1"
+            self.client = None
+
+    saved = {k: os.environ.get(k) for k in
+             ("LLM_MAX_PER_IP_MIN", "LLM_MAX_PER_IP_DAY", "LLM_MAX_PER_HOUR",
+              "LLM_MAX_PER_DAY", "LLM_REQUIRE_ORIGIN", "ALLOWED_ORIGINS")}
+    try:
+        os.environ.update(LLM_MAX_PER_IP_MIN="3", LLM_MAX_PER_IP_DAY="100",
+                          LLM_MAX_PER_HOUR="5", LLM_MAX_PER_DAY="100",
+                          LLM_REQUIRE_ORIGIN="1")
+        os.environ.pop("ALLOWED_ORIGINS", None)
+        guard.reset_for_tests()
+
+        r = Req()
+        assert guard.client_ip(r) == "1.2.3.4", "must take the first XFF entry"
+
+        # a token is required
+        try:
+            guard.check_llm_request(r, "")
+            raise AssertionError("missing token should be denied")
+        except guard.Denied as d:
+            assert d.code == 403
+
+        # a valid token works exactly once
+        tok = guard.issue_token(r)["token"]
+        guard.check_llm_request(r, tok)
+        try:
+            guard.check_llm_request(r, tok)
+            raise AssertionError("token replay should be denied")
+        except guard.Denied as d:
+            assert "already used" in d.reason
+
+        # a token is bound to the issuing IP
+        tok2 = guard.issue_token(Req(ip="5.5.5.5"))["token"]
+        try:
+            guard.check_llm_request(Req(ip="9.9.9.9"), tok2)
+            raise AssertionError("token from another IP should be denied")
+        except guard.Denied as d:
+            assert d.code == 403
+
+        # forged signature
+        try:
+            guard.check_llm_request(r, "abc.9999999999.deadbeef")
+            raise AssertionError("forged token should be denied")
+        except guard.Denied as d:
+            assert d.code == 403
+
+        # no Origin header (a plain curl / bot) is refused
+        try:
+            guard.check_llm_request(Req(origin=None), guard.issue_token(Req())["token"])
+            raise AssertionError("missing Origin should be denied")
+        except guard.Denied as d:
+            assert d.code == 403
+        # ...but can be allowed deliberately
+        os.environ["LLM_REQUIRE_ORIGIN"] = "0"
+        guard.check_llm_request(Req(origin=None), guard.issue_token(Req(origin=None))["token"])
+        os.environ["LLM_REQUIRE_ORIGIN"] = "1"
+
+        # cross-origin is refused
+        try:
+            guard.check_llm_request(Req(origin="https://evil.example"),
+                                    guard.issue_token(Req())["token"])
+            raise AssertionError("foreign Origin should be denied")
+        except guard.Denied as d:
+            assert d.code == 403
+
+        # per-IP rate limit (3/min): the 4th in a minute is refused
+        guard.reset_for_tests()
+        ip = Req(ip="7.7.7.7")
+        for i in range(3):
+            guard.check_llm_request(ip, guard.issue_token(ip)["token"])
+        try:
+            guard.check_llm_request(ip, guard.issue_token(ip)["token"])
+            raise AssertionError("per-IP limit should be enforced")
+        except guard.Denied as d:
+            assert d.code == 429 and d.retry_after
+
+        # ...and a different IP is unaffected
+        other = Req(ip="8.8.8.8")
+        guard.check_llm_request(other, guard.issue_token(other)["token"])
+
+        # global hourly budget (5/hr) caps everyone, across IPs
+        guard.reset_for_tests()
+        used = 0
+        for n in range(20):
+            q = Req(ip=f"10.0.0.{n}")
+            try:
+                guard.check_llm_request(q, guard.issue_token(q)["token"])
+                used += 1
+            except guard.Denied as d:
+                assert d.code == 429 and "budget" in d.reason
+                break
+        assert used == 5, f"global budget should cap at 5, allowed {used}"
+
+        # a failed upstream call refunds its slot
+        st = guard.status()
+        guard.refund()
+        assert guard.status()["llm_calls_this_hour"] == st["llm_calls_this_hour"] - 1
+
+        # status never leaks anything sensitive
+        assert "secret" not in repr(guard.status()).lower()
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+        guard.reset_for_tests()
+    print("ok    guard checks passed")
+
+
 if __name__ == "__main__":
     main()
     test_compose()
     test_llm_config()
     test_dotenv()
     test_packaging()
+    test_guard()
