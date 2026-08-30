@@ -5,3 +5,7 @@ data/raw/
 .env
 .env.*
 !.env.example
+
+# Unrelated work material that has landed in this directory before. This repo is
+# public, so keep it out of commits even if it reappears.
+airbnb-rubric.md
