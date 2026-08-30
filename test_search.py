@@ -156,6 +156,27 @@ def test_compose():
     good = "🚀 We shipped v2 today.\n\n📈 Latency down 60%\n\n👇 Read more."
     assert enforce_sensitivity(good, post_is_somber=False) == (good, [])
 
+    # The LLM path must offer the same swap chips as the rules path. Placements
+    # are derived from the composed text, so they carry line numbers too.
+    from compose import _llm_placements
+
+    composed = ("\U0001F680 We shipped v2 today.\n\n"
+                "Six months ago the roadmap was a napkin sketch.\n\n"
+                "\U0001F4C8 Latency down 60%\n\n"
+                "\U0001F447 Full writeup in the comments.\n\n#engineering")
+    ps = _llm_placements(composed, [{"emoji": "\U0001F680", "why": "launch hook"}])
+    assert ps, "no placements derived from LLM output"
+    assert all(isinstance(x["line"], int) for x in ps), "LLM placements need line numbers"
+    assert any(x["alternatives"] for x in ps), "LLM mode offered no swap alternatives"
+    assert ps[0]["why"] == "launch hook", "model's reason was dropped"
+    # alternatives must never duplicate an emoji already placed elsewhere
+    placed = {x["emoji"] for x in ps}
+    assert not ({a for x in ps for a in x["alternatives"]} & placed)
+    # hashtag-only lines are not placements
+    assert all("#engineering" not in x["text"] for x in ps)
+    # a reason the model didn't give degrades to empty, not a crash
+    assert _llm_placements("\U0001F3AF A line", [])[0]["why"] == ""
+
     print("ok    compose checks passed")
 
 

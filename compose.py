@@ -349,6 +349,43 @@ from config import llm_available, llm_config, load_dotenv as _load_dotenv  # noq
 _load_dotenv()
 
 
+def _llm_placements(composed, model_reasons):
+    """Describe what the model actually did, by reading its output.
+
+    Derived from the composed text rather than the model's self-reported list,
+    which gives three things that list cannot:
+      * line numbers, so a swap edits the right line instead of the first match
+      * alternatives, computed by the same ranking the rules path uses, so both
+        modes offer the same swap chips
+      * accuracy — it reflects the text, not what the model claims it did
+    """
+    reasons = {}
+    for p in model_reasons or []:
+        ch = p.get("emoji")
+        if ch:
+            reasons.setdefault(norm_char(ch), (p.get("why") or "").strip())
+
+    placed = {}
+    for i, line in enumerate(composed.split("\n")):
+        m = LEADING_EMOJI_RE.match(line)
+        if m and line[m.end():].strip():
+            placed[i] = (m.group(2), line[m.end():])
+
+    used = {norm_char(ch) for ch, _ in placed.values()}
+    out = []
+    for i, (ch, rest) in placed.items():
+        ranked = _rank_for_line(rest, used)      # `used` keeps alternatives unique
+        out.append({
+            "line": i,
+            "kind": "llm",
+            "emoji": ch,
+            "why": reasons.get(norm_char(ch), ""),
+            "text": rest.strip()[:80],
+            "alternatives": [c for c, _, _ in ranked[:4]],
+        })
+    return out
+
+
 def _explain_api_error(exc, cfg):
     """Turn an SDK exception into something a developer can act on.
 
@@ -424,11 +461,7 @@ def compose_llm(text, density="balanced", model=None):
         "provider": cfg.provider,
         "density": density,
         "text": composed,
-        "placements": [
-            {"emoji": p.get("emoji", ""), "why": p.get("why", ""), "kind": "llm"}
-            for p in data.get("placements", [])
-            if p.get("emoji") not in removed
-        ],
+        "placements": _llm_placements(composed, data.get("placements")),
     }
     if removed:
         result["note"] = (
