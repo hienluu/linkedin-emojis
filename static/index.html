@@ -61,7 +61,16 @@
   .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;
     padding:8px 14px;font-size:13.5px;cursor:pointer;white-space:nowrap}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  /* Second real action: clearly an action, clearly below the primary. */
+  .btn.secondary{border-color:var(--accent);color:var(--accent);font-weight:600}
+  .btn.secondary:hover{background:var(--accent-soft)}
+  /* A utility, not a peer of the two output actions — and the only destructive
+     one, so it should not compete for attention. */
+  .btn.ghost{border-color:transparent;background:none;color:var(--muted);font-weight:400}
+  .btn.ghost:hover{color:var(--ink);background:var(--accent-soft)}
   .btn:hover{filter:brightness(1.06)}
+  /* Separates the input-side utility from the two output-side actions. */
+  .bardiv{width:1px;align-self:stretch;background:var(--line);margin:2px 6px}
   .toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,20px);background:#0a8a3f;color:#fff;
     padding:9px 16px;border-radius:999px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;
     transition:.18s;z-index:40;box-shadow:var(--shadow)}
@@ -96,6 +105,9 @@
   textarea{max-height:62vh}
   .btn:disabled{opacity:.4;cursor:not-allowed}
   .btn:disabled:hover{filter:none}
+  .btn.ghost:disabled:hover{background:none;color:var(--muted)}
+  /* ghost is already low-contrast; .4 would make it read as absent */
+  .btn.ghost:disabled{opacity:.55}
   .out .ph{color:var(--muted)}
   .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
     font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
@@ -181,8 +193,9 @@
       <button data-d="heavy" aria-pressed="false">Heavy</button>
     </span>
     <span style="margin-left:auto"></span>
-    <button class="btn" id="clearSrc" disabled title="Clear the post (⌘⌫)">Clear</button>
-    <button class="btn" id="copyOut" disabled title="Copy the result">Copy post</button>
+    <button class="btn ghost" id="clearSrc" disabled title="Clear the post (⌘⌫)">Clear</button>
+    <span class="bardiv" aria-hidden="true"></span>
+    <button class="btn secondary" id="copyOut" disabled title="Copy the result">Copy post</button>
     <button class="btn primary" id="go" title="Add emoji (⌘↵)">Add emoji</button>
   </div>
   <div id="cbanner"></div>
