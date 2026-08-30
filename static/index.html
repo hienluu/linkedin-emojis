@@ -68,7 +68,18 @@
   .toast.on{opacity:1;transform:translate(-50%,0)}
   footer{margin-top:36px;color:var(--muted);font-size:12px;line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
   /* tabs */
-  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tabs{display:flex;gap:4px;align-items:center;border-bottom:1px solid var(--line);margin-bottom:16px}
+  /* Right-aligned in the tab row: visible from page load, and clear of the
+     bottom tray and the feedback panel itself. */
+  .fbbtn{margin-left:auto;margin-bottom:6px;display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--accent);background:var(--card);color:var(--accent);
+    font:inherit;font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer}
+  .fbbtn:hover{background:var(--accent-soft)}
+  .fbbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (max-width:520px){
+    .fbtext{display:none}
+    .tab{padding:9px 8px;font-size:13px}
+  }
   .tab{border:0;background:none;color:var(--muted);font:inherit;font-size:14px;padding:9px 14px;
     cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
   .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
@@ -112,7 +123,8 @@
   .banner.info{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
   @media (prefers-color-scheme:dark){.banner.warn{background:#3a2f18;color:#e8cf9a}}
   /* feedback */
-  .fb{position:fixed;right:16px;bottom:16px;z-index:35;background:var(--card);
+  /* bottom:88px clears the emoji tray when it is open */
+  .fb{position:fixed;right:16px;bottom:88px;z-index:35;background:var(--card);
     border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
     padding:12px 14px;max-width:330px;transform:translateY(140%);transition:.22s;opacity:0}
   .fb.on{transform:none;opacity:1}
@@ -125,7 +137,6 @@
     border-radius:8px;background:var(--card);cursor:pointer}
   .fb .vote:hover{border-color:var(--accent);background:var(--accent-soft)}
   .fb .vote[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
-  .fblink{cursor:pointer;text-decoration:underline}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
     border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
@@ -141,6 +152,9 @@
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-search" aria-selected="true">Search emoji</button>
     <button class="tab" role="tab" id="tab-compose" aria-selected="false">Add emoji to a post</button>
+    <button class="fbbtn" id="fbOpen" title="Tell me what works and what's missing">
+      💬<span class="fbtext">Feedback</span>
+    </button>
   </div>
 
 <div id="pane-compose" hidden>
@@ -207,7 +221,6 @@
   </div><!-- /pane-search -->
 
   <footer>
-    <a class="fblink" id="fbOpen">Send feedback</a> ·
     Data: Unicode CLDR emoji annotations (v15.1) — a superset of both LinkedIn emoji list articles,
     plus a curated professional-vocabulary layer. Hover an emoji with skin-tone variants to pick a tone.
   </footer>
