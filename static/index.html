@@ -111,6 +111,21 @@
   .banner.warn{background:#fff6e5;border-color:#e5c07b;color:#7a5a12}
   .banner.info{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
   @media (prefers-color-scheme:dark){.banner.warn{background:#3a2f18;color:#e8cf9a}}
+  /* feedback */
+  .fb{position:fixed;right:16px;bottom:16px;z-index:35;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+    padding:12px 14px;max-width:330px;transform:translateY(140%);transition:.22s;opacity:0}
+  .fb.on{transform:none;opacity:1}
+  .fb p{margin:0 0 9px;font-size:13.5px}
+  .fb .row{display:flex;gap:7px;align-items:center}
+  .fb textarea{min-height:70px;max-height:150px;font-size:13px;padding:9px;margin:9px 0 0}
+  .fb .x{position:absolute;top:6px;right:9px;cursor:pointer;color:var(--muted);
+    font-size:15px;line-height:1;border:0;background:none}
+  .fb .vote{font-size:18px;padding:5px 11px;border:1px solid var(--line);
+    border-radius:8px;background:var(--card);cursor:pointer}
+  .fb .vote:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .fb .vote[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+  .fblink{cursor:pointer;text-decoration:underline}
   .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
     border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
@@ -192,6 +207,7 @@
   </div><!-- /pane-search -->
 
   <footer>
+    <a class="fblink" id="fbOpen">Send feedback</a> ·
     Data: Unicode CLDR emoji annotations (v15.1) — a superset of both LinkedIn emoji list articles,
     plus a curated professional-vocabulary layer. Hover an emoji with skin-tone variants to pick a tone.
   </footer>
@@ -205,6 +221,21 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+
+<div class="fb" id="fb" role="dialog" aria-label="Feedback">
+  <button class="x" id="fbClose" aria-label="Close">✕</button>
+  <p id="fbAsk">Was this useful?</p>
+  <div class="row">
+    <button class="vote" id="fbUp" aria-pressed="false" title="Yes">👍</button>
+    <button class="vote" id="fbDown" aria-pressed="false" title="No">👎</button>
+    <span style="font-size:12px;color:var(--muted)">takes 5 seconds</span>
+  </div>
+  <textarea id="fbText" placeholder="What would make it more useful? (optional)"></textarea>
+  <div class="row" style="margin-top:8px">
+    <button class="btn primary" id="fbSend">Send</button>
+    <button class="btn" id="fbSkip">Not now</button>
+  </div>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
@@ -330,13 +361,69 @@ $("#chips").replaceChildren(...STARTERS.map(s => {
   return b;
 }));
 
-$("#trayCopy").onclick = () => { copy(tray.join("")); toast(`Copied ${tray.length} emoji`); };
+$("#trayCopy").onclick = () => {
+  copy(tray.join("")); toast(`Copied ${tray.length} emoji`); maybeAskFeedback();
+};
 $("#trayClear").onclick = () => { tray = []; renderTray(); };
 $("#clear").onclick = () => { recent = []; localStorage.removeItem("emoji-recent"); renderRecent(); };
 
 fetch("/api/groups").then(r => r.json())
   .then(d => $("#total").textContent = d.total.toLocaleString()).catch(()=>{});
 showStarters(); renderRecent();
+
+/* ------------------------------------------------------------ feedback */
+// Asked once per browser, and only after someone has copied something — at that
+// point they've had the value and the question isn't an interruption.
+const FB_KEY = "emoji-feedback-state";
+let fbState = localStorage.getItem(FB_KEY) || "";   // "" | "asked" | "done"
+let fbRating = "";
+
+function openFeedback(auto){
+  if (auto && fbState) return;                      // never nag twice
+  $("#fb").classList.add("on");
+  if (auto){ fbState = "asked"; localStorage.setItem(FB_KEY, fbState); }
+}
+function closeFeedback(){ $("#fb").classList.remove("on"); }
+
+function maybeAskFeedback(){
+  // Give the copy toast a moment to land first.
+  setTimeout(() => openFeedback(true), 1200);
+}
+
+$("#fbOpen").onclick = () => openFeedback(false);
+$("#fbClose").onclick = closeFeedback;
+$("#fbSkip").onclick = closeFeedback;
+[["#fbUp","up"],["#fbDown","down"]].forEach(([sel, val]) => {
+  $(sel).onclick = () => {
+    fbRating = fbRating === val ? "" : val;
+    $("#fbUp").setAttribute("aria-pressed", fbRating === "up");
+    $("#fbDown").setAttribute("aria-pressed", fbRating === "down");
+  };
+});
+$("#fbSend").onclick = async () => {
+  const comment = $("#fbText").value.trim();
+  if (!fbRating && !comment){ toast("Pick 👍 or 👎, or add a note"); return; }
+  $("#fbSend").disabled = true;
+  try {
+    const res = await fetch("/api/feedback", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        rating: fbRating, comment,
+        context: $("#pane-compose").hidden ? "search" : "compose",
+      }),
+    });
+    const r = await res.json().catch(() => ({}));
+    if (res.ok){
+      fbState = "done"; localStorage.setItem(FB_KEY, fbState);
+      $("#fbAsk").textContent = "Thank you — noted.";
+      setTimeout(closeFeedback, 1100);
+      toast("Feedback sent");
+    } else {
+      toast(r.detail || "Could not send feedback");
+    }
+  } catch { toast("Could not send feedback"); }
+  finally { $("#fbSend").disabled = false; }
+};
 
 /* ---------------------------------------------------------------- tabs */
 function showTab(which){
@@ -509,6 +596,7 @@ function resetCompose(){
 $("#copyOut").onclick = () => {
   if (!lastResult) return;
   copy(lastResult.text); toast("Post copied");
+  maybeAskFeedback();
 };
 
 // Clear is now one click away in the toolbar, so make it recoverable.

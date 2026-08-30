@@ -389,6 +389,53 @@ gcloud will **not** fall back to `.gitignore`, and without that file the entire
 
 ---
 
+## Feedback and usage signals
+
+A thumbs up/down widget with one optional text box appears after someone copies
+something — once per browser, plus a **Send feedback** link in the footer.
+Alongside it the app records two implicit signals that are usually more actionable
+than opinions:
+
+- **`zero_results`** — searches that matched nothing. Every one is a phrase missing
+  from `concepts.py`, so this doubles as a worklist.
+- **`compose`** — mode, density, input length, emoji placed, whether the sensitivity
+  guard fired.
+
+Everything is emitted as single-line JSON on stdout. Cloud Run parses that into
+queryable `jsonPayload` fields; Modal keeps it as log text. No database.
+
+```bash
+# what people searched for and didn't find
+gcloud logging read \
+  'jsonPayload.component="feedback" AND jsonPayload.event="zero_results"' \
+  --limit 50 --format='value(jsonPayload.query)' | sort | uniq -c | sort -rn
+
+# what people said
+gcloud logging read \
+  'jsonPayload.component="feedback" AND jsonPayload.event="feedback"' \
+  --limit 50 --format='value(jsonPayload.rating,jsonPayload.comment)'
+
+# rules vs LLM usage
+gcloud logging read 'jsonPayload.event="compose"' \
+  --limit 200 --format='value(jsonPayload.mode)' | sort | uniq -c
+```
+
+### What is never logged
+
+**Post content is never recorded — only derived facts about it.** People paste real
+drafts, including things they would not want stored; the layoff post in the test
+suite is exactly that case. A test asserts the post text cannot reach the log.
+
+Search queries are recorded *only* when they returned nothing, truncated to 120
+characters. Successful searches, post text and API keys are never logged. There is
+no cookie, no third-party analytics and no cross-site identifier — feedback is
+rate-limited by IP (5/hour) but the IP itself is not stored.
+
+Set `FEEDBACK_LOGGING=0` to disable all of it. Cloud Logging's default retention is
+30 days; for history beyond that, route a sink to BigQuery or swap `emit()` for a
+Firestore write.
+
+
 ## API
 
 | Endpoint | Notes |
@@ -398,6 +445,7 @@ gcloud will **not** fall back to `.gitignore`, and without that file the entire
 | `GET /api/groups` | Category names and counts |
 | `GET /api/browse?group=Objects` | Everything in one category |
 | `GET /api/token` | Short-lived single-use token required by `mode=llm` |
+| `POST /api/feedback` | Thumbs rating plus optional comment; rate-limited per IP |
 | `GET /api/health` | Index size, LLM config, and current usage counters |
 | `GET /api/docs` | OpenAPI |
 
@@ -489,6 +537,7 @@ build_dataset.py   Unicode/CLDR -> data/emojis.json   (run occasionally)
 concepts.py        curated LinkedIn vocabulary        (edit this to tune results)
 config.py          env-driven LLM config + `uv run config.py` diagnostics
 guard.py           rate limits, budget cap and request tokens for LLM mode
+feedback.py        usage signals + feedback intake, as structured logs
 search.py          inverted index, ranking, recommendations
 compose.py         post segmentation + placement, rules and LLM backends
 app.py             FastAPI: API + serves the UI

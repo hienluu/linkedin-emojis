@@ -468,6 +468,73 @@ def test_guard():
     print("ok    guard checks passed")
 
 
+def test_feedback():
+    """Usage logging and feedback intake. The privacy rule is the important part."""
+    import io
+    import json
+    import sys
+
+    import feedback
+
+    def capture(fn):
+        buf, real = io.StringIO(), sys.stdout
+        sys.stdout = buf
+        try:
+            fn()
+        finally:
+            sys.stdout = real
+        return [json.loads(l) for l in buf.getvalue().splitlines() if l.strip()]
+
+    feedback.reset_for_tests()
+
+    # The post text must NEVER reach the log — only derived facts.
+    secret = "I got laid off in March and I am not ok"
+    result = {"text": "\U0001F680 " + secret, "count": 1, "note": "Sensitive subject detected",
+              "verified": True, "provider": "gemini"}
+    recs = capture(lambda: feedback.log_compose(result, "llm", "balanced", len(secret)))
+    blob = json.dumps(recs)
+    assert "laid off" not in blob, "post content leaked into the log!"
+    assert secret not in blob and result["text"] not in blob
+    assert recs[0]["event"] == "compose"
+    assert recs[0]["emoji_placed"] == 1 and recs[0]["input_chars"] == len(secret)
+    assert recs[0]["sensitive"] is True and recs[0]["mode"] == "llm"
+
+    # Zero-result searches are logged, since each is a gap in concepts.py.
+    recs = capture(lambda: feedback.log_zero_results("  quantum\n widget  "))
+    assert recs[0]["event"] == "zero_results"
+    assert recs[0]["query"] == "quantum widget", recs[0]["query"]
+    assert capture(lambda: feedback.log_zero_results("")) == []
+
+    # ...and are truncated.
+    recs = capture(lambda: feedback.log_zero_results("x" * 500))
+    assert len(recs[0]["query"]) <= feedback.MAX_QUERY
+
+    # Feedback intake.
+    recs = capture(lambda: feedback.accept_feedback("1.1.1.1", "up", "loved it", "compose"))
+    assert recs[0]["event"] == "feedback" and recs[0]["rating"] == "up"
+    assert recs[0]["comment"] == "loved it"
+
+    assert feedback.accept_feedback("2.2.2.2", "sideways", "", "")["ok"] is False
+    assert feedback.accept_feedback("2.2.2.2", "", "", "")["ok"] is False   # nothing to send
+    assert feedback.accept_feedback("2.2.2.2", "", "just a note", "")["ok"] is True
+
+    # comment length is capped
+    recs = capture(lambda: feedback.accept_feedback("3.3.3.3", "down", "y" * 5000, ""))
+    assert len(recs[0]["comment"]) <= feedback.MAX_COMMENT
+
+    # per-IP rate limit stops spam
+    feedback.reset_for_tests()
+    ok = sum(1 for i in range(20)
+             if feedback.accept_feedback("4.4.4.4", "up", f"note {i}", "")["ok"])
+    assert ok == feedback.FEEDBACK_PER_IP_PER_HOUR, ok
+    assert feedback.accept_feedback("5.5.5.5", "up", "different ip", "")["ok"] is True
+
+    # telemetry must never break a request
+    feedback.emit("weird", obj=object())          # unserialisable -> swallowed
+    feedback.reset_for_tests()
+    print("ok    feedback checks passed")
+
+
 if __name__ == "__main__":
     main()
     test_compose()
@@ -475,3 +542,4 @@ if __name__ == "__main__":
     test_dotenv()
     test_packaging()
     test_guard()
+    test_feedback()

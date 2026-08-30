@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 import compose as composer
 import config
+import feedback
 import guard
 from search import get_index
 
@@ -44,7 +45,11 @@ def search(
     limit: int = Query(60, ge=1, le=300),
     related: int = Query(12, ge=0, le=40),
 ):
-    return get_index().query(q, limit=limit, rec_limit=related)
+    result = get_index().query(q, limit=limit, rec_limit=related)
+    # A search that found nothing is a phrase missing from concepts.py.
+    if q.strip() and result["count"] == 0:
+        feedback.log_zero_results(q)
+    return result
 
 
 @api.get("/api/groups")
@@ -93,7 +98,10 @@ def compose_post(
             raise HTTPException(d.code, d.reason, headers=headers) from None
 
     try:
-        return composer.compose(text, mode=mode, density=density)
+        result = composer.compose(text, mode=mode, density=density)
+        # Derived stats only — the post itself is never logged.
+        feedback.log_compose(result, mode=mode, density=density, chars=len(text))
+        return result
     except RuntimeError as e:
         # compose._explain_api_error already produced an actionable message.
         if mode == "llm":
@@ -105,6 +113,20 @@ def compose_post(
             guard.refund()
         logging.getLogger("uvicorn.error").exception("compose failed")
         raise HTTPException(502, f"{type(e).__name__}: {e}") from e
+
+
+@api.post("/api/feedback")
+def submit_feedback(
+    request: Request,
+    rating: str = Body("", embed=True),
+    comment: str = Body("", embed=True, max_length=2000),
+    context: str = Body("", embed=True),
+):
+    """Thumbs up/down plus an optional note. Rate-limited per IP."""
+    out = feedback.accept_feedback(guard.client_ip(request), rating, comment, context)
+    if not out["ok"]:
+        raise HTTPException(429 if "already sent" in out["error"] else 400, out["error"])
+    return out
 
 
 @api.get("/api/health")

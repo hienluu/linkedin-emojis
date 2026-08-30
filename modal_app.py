@@ -13,7 +13,8 @@ import modal
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install("fastapi[standard]==0.115.*", "openai>=1.60")
-    .add_local_python_source("app", "search", "concepts", "compose", "config", "guard")
+    .add_local_python_source(
+        "app", "search", "concepts", "compose", "config", "guard", "feedback")
     # data/raw holds the ~1.5MB of Unicode source files; only emojis.json is needed at runtime.
     .add_local_dir("data", remote_path="/root/data", ignore=["raw/**", "raw"])
     .add_local_dir("static", remote_path="/root/static")
