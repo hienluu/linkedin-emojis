@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+# 1.4MB of Unicode source files, only needed by build_dataset.py
+data/raw/
+build_dataset.py
+test_search.py
+modal_app.py
+README.md
+deploy_gcp.sh
+# Never bake local secrets into the image.
+.env
+.env.*
+!.env.example

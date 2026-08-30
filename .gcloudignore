@@ -1,0 +1,12 @@
+# Controls what `gcloud run deploy --source .` uploads to Cloud Build.
+# This directory is not a git repo, so gcloud will NOT fall back to .gitignore —
+# without this file the whole .venv/ would be uploaded on every deploy.
+.venv/
+__pycache__/
+*.pyc
+.git/
+data/raw/
+# Never ship local secrets to Cloud Build.
+.env
+.env.*
+!.env.example

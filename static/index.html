@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emoji Search for LinkedIn Posts</title>
+<style>
+  :root{
+    --bg:#f4f2ee; --card:#fff; --ink:#1b1f23; --muted:#5e6b74; --line:#e3e0db;
+    --accent:#0a66c2; --accent-soft:#e8f0fa; --shadow:0 1px 2px rgba(0,0,0,.08),0 4px 14px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14181c; --card:#1c2126; --ink:#e8eaed; --muted:#9aa6b1; --line:#2c333a;
+           --accent:#5aa9f0; --accent-soft:#1b2a3b; --shadow:0 1px 2px rgba(0,0,0,.4); }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 120px}
+  header h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  header p{margin:0 0 20px;color:var(--muted);font-size:13.5px}
+  .searchbar{position:sticky;top:0;z-index:20;background:var(--bg);padding:10px 0 12px;margin-bottom:4px}
+  .searchbox{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:12px 14px;box-shadow:var(--shadow)}
+  .searchbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .searchbox svg{flex:none;color:var(--muted)}
+  #q{flex:1;border:0;background:none;color:var(--ink);font-size:16px;outline:none;min-width:0}
+  .kbd{font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);
+    border:1px solid var(--line);border-radius:4px;padding:4px 6px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .chip{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;
+    padding:4px 11px;font-size:12.5px;cursor:pointer}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  section{margin-top:26px}
+  .shead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+  .shead h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0;font-weight:600}
+  .shead .hint{font-size:12px;color:var(--muted)}
+  .grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+  .cell{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:12px 6px 8px;text-align:center;cursor:pointer;transition:.12s;overflow:hidden}
+  .cell:hover,.cell:focus-visible{border-color:var(--accent);transform:translateY(-1px);
+    box-shadow:var(--shadow);outline:none}
+  .cell .em{font-size:30px;line-height:1.25;
+    font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+  .cell .nm{font-size:10.5px;color:var(--muted);margin-top:3px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+  .cell.copied{border-color:#0a8a3f;background:var(--accent-soft)}
+  .tones{position:absolute;inset:auto 0 0;display:flex;justify-content:center;gap:2px;padding:2px 0;
+    background:var(--card);border-top:1px solid var(--line);opacity:0;transition:.12s}
+  .cell:hover .tones{opacity:1}
+  .tones span{font-size:13px;padding:1px 2px;border-radius:4px}
+  .tones span:hover{background:var(--accent-soft)}
+  .related .cell{background:transparent;border-style:dashed}
+  .empty{color:var(--muted);padding:24px 4px;font-size:14px}
+  .tray{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);
+    box-shadow:0 -4px 20px rgba(0,0,0,.08);transform:translateY(110%);transition:.2s;z-index:30}
+  .tray.on{transform:none}
+  .tray-in{max-width:1080px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
+  .tray-em{flex:1;font-size:26px;letter-spacing:2px;min-height:34px;word-break:break-all;
+    font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;
+    padding:8px 14px;font-size:13.5px;cursor:pointer;white-space:nowrap}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn:hover{filter:brightness(1.06)}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,20px);background:#0a8a3f;color:#fff;
+    padding:9px 16px;border-radius:999px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;
+    transition:.18s;z-index:40;box-shadow:var(--shadow)}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  footer{margin-top:36px;color:var(--muted);font-size:12px;line-height:1.7;border-top:1px solid var(--line);padding-top:14px}
+  /* tabs */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .tab{border:0;background:none;color:var(--muted);font:inherit;font-size:14px;padding:9px 14px;
+    cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  /* composer */
+  .cols{display:grid;gap:14px;grid-template-columns:1fr 1fr}
+  @media (max-width:760px){.cols{grid-template-columns:1fr}}
+  textarea,.out{width:100%;min-height:340px;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14.5px;line-height:1.6;
+    font-family:inherit;resize:vertical;white-space:pre-wrap;word-break:break-word}
+  textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  /* Cap the result so a long post scrolls inside its panel instead of
+     stretching the page and pushing everything below the fold. */
+  .out{overflow:auto;max-height:62vh}
+  textarea{max-height:62vh}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn:disabled:hover{filter:none}
+  .out .ph{color:var(--muted)}
+  .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+  /* Sticky so Clear / Copy / Add emoji stay reachable with a long post. */
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    position:sticky;top:0;z-index:15;background:var(--bg);
+    padding:12px 0;margin:0 0 14px;border-bottom:1px solid var(--line)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:0;background:var(--card);color:var(--muted);font:inherit;font-size:13px;
+    padding:7px 13px;cursor:pointer}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:#fff;font-weight:600}
+  .seg button:disabled{opacity:.45;cursor:not-allowed}
+  .why{margin-top:12px;display:flex;flex-direction:column;gap:5px}
+  .whyrow{display:flex;gap:9px;align-items:baseline;font-size:12.5px;color:var(--muted);
+    background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  .whyrow b{font-size:16px;font-weight:400}
+  .swap{cursor:pointer;font-size:15px;line-height:1;padding:3px 5px;border-radius:6px;
+    border:1px solid transparent}
+  .swap:hover{background:var(--accent-soft);border-color:var(--accent)}
+  /* the emoji currently in the post */
+  .swap.cur{border-color:var(--accent);background:var(--accent-soft);cursor:default}
+  .swap.cur:hover{background:var(--accent-soft)}
+  .banner{border-radius:8px;padding:9px 12px;font-size:13px;margin:10px 0;border:1px solid}
+  .banner.warn{background:#fff6e5;border-color:#e5c07b;color:#7a5a12}
+  .banner.info{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+  @media (prefers-color-scheme:dark){.banner.warn{background:#3a2f18;color:#e8cf9a}}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Emoji for LinkedIn posts</h1>
+    <p>Search <strong id="total">1,898</strong> emoji by meaning — or paste a whole post and let it place them.</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-search" aria-selected="true">Search emoji</button>
+    <button class="tab" role="tab" id="tab-compose" aria-selected="false">Add emoji to a post</button>
+  </div>
+
+<div id="pane-compose" hidden>
+  <!-- Sticky: with a long post the actions would otherwise sit far below the fold. -->
+  <div class="controls" id="composeBar">
+    <span class="lbl" style="margin:0">Placement</span>
+    <span class="seg" id="modeSeg">
+      <button data-mode="rules" aria-pressed="true">Rule-based</button>
+      <button data-mode="llm" aria-pressed="false">LLM</button>
+    </span>
+    <span class="lbl" style="margin:0 0 0 8px">Density</span>
+    <span class="seg" id="densSeg">
+      <button data-d="light" aria-pressed="false">Light</button>
+      <button data-d="balanced" aria-pressed="true">Balanced</button>
+      <button data-d="heavy" aria-pressed="false">Heavy</button>
+    </span>
+    <span style="margin-left:auto"></span>
+    <button class="btn" id="clearSrc" disabled title="Clear the post (⌘⌫)">Clear</button>
+    <button class="btn" id="copyOut" disabled title="Copy the result">Copy post</button>
+    <button class="btn primary" id="go" title="Add emoji (⌘↵)">Add emoji</button>
+  </div>
+  <div id="cbanner"></div>
+  <div class="cols">
+    <div>
+      <div class="lbl"><span>Your post</span><span id="srcCount"></span></div>
+      <textarea id="src" placeholder="Paste your LinkedIn post here…"></textarea>
+    </div>
+    <div>
+      <div class="lbl"><span>With emoji</span><span id="ccount"></span></div>
+      <div class="out" id="dst"><span class="ph">Your post with emoji will appear here.</span></div>
+      <div class="why" id="why"></div>
+    </div>
+  </div>
+</div>
+
+<div id="pane-search">
+  <div class="searchbar">
+    <div class="searchbox">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <input id="q" placeholder="What is your post about?" autocomplete="off" autofocus>
+      <span class="kbd" id="hint">/</span>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <section id="results-sec">
+    <div class="shead"><h2 id="rtitle">Popular for posts</h2><span class="hint" id="rcount"></span></div>
+    <div class="grid" id="results"></div>
+    <div class="empty" id="empty" hidden></div>
+  </section>
+
+  <section id="related-sec" hidden>
+    <div class="shead"><h2>You might also like</h2><span class="hint">related to your search</span></div>
+    <div class="grid related" id="related"></div>
+  </section>
+
+  <section id="recent-sec" hidden>
+    <div class="shead"><h2>Recently copied</h2><span class="hint" id="clear"
+      style="cursor:pointer;text-decoration:underline">clear</span></div>
+    <div class="grid" id="recent"></div>
+  </section>
+
+  </div><!-- /pane-search -->
+
+  <footer>
+    Data: Unicode CLDR emoji annotations (v15.1) — a superset of both LinkedIn emoji list articles,
+    plus a curated professional-vocabulary layer. Hover an emoji with skin-tone variants to pick a tone.
+  </footer>
+</div>
+
+<div class="tray" id="tray">
+  <div class="tray-in">
+    <div class="tray-em" id="trayEm"></div>
+    <button class="btn" id="trayClear">Clear</button>
+    <button class="btn primary" id="trayCopy">Copy all</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const STARTERS = ["hiring","celebrate","launch day","growth","thank you","burnout","team",
+                  "data","AI","milestone","link in comments","lessons learned"];
+let tray = [], recent = JSON.parse(localStorage.getItem("emoji-recent") || "[]");
+
+function toast(msg, onUndo){
+  const t = $("#toast");
+  t.textContent = "";
+  t.append(document.createTextNode(msg));
+  t.style.pointerEvents = onUndo ? "auto" : "none";
+  t.style.cursor = onUndo ? "pointer" : "default";
+  t.onclick = null;
+  if (onUndo){
+    t.onclick = () => { onUndo(); t.classList.remove("on"); };
+  }
+  t.classList.add("on");
+  clearTimeout(toast._t);
+  // Leave an undoable action on screen long enough to actually click it.
+  toast._t = setTimeout(()=>t.classList.remove("on"), onUndo ? 6000 : 1300);
+}
+
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta);
+          ta.select(); document.execCommand("copy"); ta.remove(); }
+}
+
+function pushRecent(ch){
+  recent = [ch, ...recent.filter(c => c !== ch)].slice(0, 24);
+  localStorage.setItem("emoji-recent", JSON.stringify(recent));
+  renderRecent();
+}
+
+function cell(e, opts={}){
+  const d = document.createElement("div");
+  d.className = "cell"; d.tabIndex = 0;
+  d.title = `${e.name}${e.keywords?.length ? "\n" + e.keywords.join(", ") : ""}`;
+  d.innerHTML = `<div class="em">${e.char}</div><div class="nm">${e.name}</div>`;
+  if (e.tones && Object.keys(e.tones).length){
+    const t = document.createElement("div"); t.className = "tones";
+    for (const [tone, ch] of Object.entries(e.tones)){
+      const s = document.createElement("span"); s.textContent = ch; s.title = tone;
+      s.onclick = ev => { ev.stopPropagation(); pick(ch, d); };
+      t.appendChild(s);
+    }
+    d.appendChild(t);
+  }
+  const act = () => pick(e.char, d);
+  d.onclick = act;
+  d.onkeydown = ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); act(); } };
+  return d;
+}
+
+function pick(ch, el){
+  copy(ch); pushRecent(ch);
+  tray.push(ch); renderTray();
+  toast(`Copied ${ch}`);
+  if (el){ el.classList.add("copied"); setTimeout(()=>el.classList.remove("copied"), 500); }
+}
+
+function fill(node, list){
+  node.replaceChildren(...list.map(e => cell(e)));
+}
+
+function renderTray(){
+  $("#trayEm").textContent = tray.join("");
+  $("#tray").classList.toggle("on", tray.length > 0);
+}
+function renderRecent(){
+  $("#recent-sec").hidden = recent.length === 0;
+  $("#recent").replaceChildren(...recent.map(ch => cell({char: ch, name: ""})));
+}
+
+let seq = 0;
+async function run(q){
+  const mine = ++seq;
+  const url = `/api/search?q=${encodeURIComponent(q)}&limit=72&related=14`;
+  const r = await fetch(url).then(r => r.json());
+  if (mine !== seq) return;                       // a newer keystroke won
+  $("#rtitle").textContent = q ? `Results for “${q}”` : "Popular for posts";
+  $("#rcount").textContent = q ? `${r.count} match${r.count === 1 ? "" : "es"}` +
+        (r.concepts.length ? ` · ${r.concepts.join(", ")}` : "") : "";
+  fill($("#results"), r.results);
+  $("#empty").hidden = r.count > 0;
+  $("#empty").textContent = r.count ? "" : `No emoji matched “${q}”. Try a simpler word.`;
+  $("#related-sec").hidden = r.related.length === 0;
+  fill($("#related"), r.related);
+}
+
+function showStarters(){
+  $("#rtitle").textContent = "Popular for posts";
+  $("#rcount").textContent = "";
+  $("#related-sec").hidden = true;
+  fill($("#results"), "🎉🚀🔥💡✅👏🙌🤝📈📊🎯💪✨⭐🙏👍💯📣📌🧠💻🌱🏆🎓💼📝🔍⚡🌍☕🧵👀🤔😊🥳❤️"
+       .match(/./gu).map(ch => ({char: ch, name: ""})));
+  $("#empty").hidden = true;
+}
+
+let timer;
+$("#q").addEventListener("input", e => {
+  const q = e.target.value.trim();
+  clearTimeout(timer);
+  if (!q) return showStarters();
+  timer = setTimeout(() => run(q), 130);
+});
+$("#q").addEventListener("keydown", e => {
+  if (e.key === "Enter"){
+    const first = $("#results .cell");
+    if (first) first.click();
+  }
+  if (e.key === "Escape"){ e.target.value = ""; showStarters(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== $("#q")){ e.preventDefault(); $("#q").focus(); }
+});
+
+$("#chips").replaceChildren(...STARTERS.map(s => {
+  const b = document.createElement("button");
+  b.className = "chip"; b.textContent = s;
+  b.onclick = () => { $("#q").value = s; run(s); };
+  return b;
+}));
+
+$("#trayCopy").onclick = () => { copy(tray.join("")); toast(`Copied ${tray.length} emoji`); };
+$("#trayClear").onclick = () => { tray = []; renderTray(); };
+$("#clear").onclick = () => { recent = []; localStorage.removeItem("emoji-recent"); renderRecent(); };
+
+fetch("/api/groups").then(r => r.json())
+  .then(d => $("#total").textContent = d.total.toLocaleString()).catch(()=>{});
+showStarters(); renderRecent();
+
+/* ---------------------------------------------------------------- tabs */
+function showTab(which){
+  const isSearch = which === "search";
+  $("#pane-search").hidden = !isSearch;
+  $("#pane-compose").hidden = isSearch;
+  $("#tab-search").setAttribute("aria-selected", isSearch);
+  $("#tab-compose").setAttribute("aria-selected", !isSearch);
+  if (isSearch) $("#q").focus(); else $("#src").focus();
+}
+$("#tab-search").onclick = () => showTab("search");
+$("#tab-compose").onclick = () => showTab("compose");
+
+/* ------------------------------------------------------------ composer */
+let mode = "rules", density = "balanced", lastResult = null;
+
+function segWire(sel, attr, onPick){
+  $(sel).querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (b.disabled) return;
+    $(sel).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    onPick(b.dataset[attr]);
+  });
+}
+segWire("#modeSeg", "mode", v => { mode = v; if ($("#src").value.trim()) runCompose(); });
+segWire("#densSeg", "d",    v => { density = v; if ($("#src").value.trim()) runCompose(); });
+
+function banner(html, cls){
+  $("#cbanner").innerHTML = html ? `<div class="banner ${cls}">${html}</div>` : "";
+}
+
+// Swap `from` -> `to` for one placement. Targets the specific line when the
+// backend told us which one (rules mode); otherwise falls back to the first
+// occurrence. Returns the new text, or null if `from` wasn't found.
+function swapInText(text, from, to, lineNo){
+  const lines = text.split("\n");
+  if (Number.isInteger(lineNo) && lines[lineNo] && lines[lineNo].includes(from)){
+    lines[lineNo] = lines[lineNo].replace(from, to);
+    return lines.join("\n");
+  }
+  return text.includes(from) ? text.replace(from, to) : null;
+}
+
+function renderWhy(r){
+  const why = $("#why");
+  why.replaceChildren();
+
+  (r.placements || []).forEach(p => {
+    const row = document.createElement("div");
+    row.className = "whyrow";
+
+    const badge = document.createElement("b");
+    badge.textContent = p.emoji;
+
+    const reason = document.createElement("span");
+    reason.style.flex = "1";
+    reason.textContent = p.why || "";
+
+    row.append(badge, reason);
+
+    // Include the original alongside the alternatives so a swap is reversible.
+    const options = [...new Set([p.emoji, ...(p.alternatives || [])])];
+    if (options.length > 1){
+      const label = document.createElement("span");
+      label.textContent = "swap:";
+      label.style.marginRight = "2px";
+      row.append(label);
+
+      // The live current emoji — the bug was reading a value frozen at render.
+      let current = p.emoji;
+      const chips = options.map(opt => {
+        const chip = document.createElement("span");
+        chip.className = "swap" + (opt === current ? " cur" : "");
+        chip.textContent = opt;
+        chip.title = opt === current ? "currently used" : `use ${opt}`;
+        chip.onclick = () => {
+          if (opt === current) return;
+          const next = swapInText(lastResult.text, current, opt, p.line);
+          if (next === null){
+            toast(`Could not find ${current} to replace`);
+            return;
+          }
+          lastResult.text = next;
+          $("#dst").textContent = next;
+          current = opt;
+          badge.textContent = opt;
+          chips.forEach(c => c.classList.toggle("cur", c.textContent === current));
+          toast(`Swapped to ${opt}`);
+        };
+        return chip;
+      });
+      row.append(...chips);
+    }
+    why.append(row);
+  });
+}
+
+async function runCompose(){
+  const text = $("#src").value;
+  if (!text.trim()){ $("#dst").innerHTML = '<span class="ph">Paste a post first.</span>';
+                     $("#why").innerHTML = ""; banner("", ""); return; }
+  $("#go").disabled = true;
+  $("#ccount").innerHTML = '<span class="spin"></span>';
+  try {
+    const res = await fetch("/api/compose", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text, mode, density}),
+    });
+    const r = await res.json();
+    if (!res.ok){
+      banner(r.detail || "Something went wrong.", "warn");
+      $("#ccount").textContent = "";
+      return;
+    }
+    lastResult = r;
+    $("#dst").textContent = r.text;
+    $("#ccount").textContent = `${r.count} emoji`;
+    syncComposeButtons();
+    let msgs = [];
+    if (r.note) msgs.push(r.note);
+    if (r.warning) msgs.push(r.warning);
+    banner(msgs.join(" "), r.warning ? "warn" : "info");
+    renderWhy(r);
+  } catch(e){
+    banner("Could not reach the server.", "warn");
+  } finally {
+    if ($("#ccount").querySelector(".spin")) $("#ccount").textContent = "";
+    syncComposeButtons();   // not a blanket re-enable: respects empty input
+  }
+}
+
+$("#go").onclick = runCompose;
+$("#src").addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter"){ e.preventDefault(); runCompose(); }
+});
+// Keep the toolbar honest: nothing to copy until there is a result, nothing to
+// clear until something is typed.
+function syncComposeButtons(){
+  const hasText = $("#src").value.trim().length > 0;
+  $("#clearSrc").disabled = !hasText && !lastResult;
+  $("#copyOut").disabled = !lastResult;
+  $("#go").disabled = !hasText;
+  const n = $("#src").value.length;
+  $("#srcCount").textContent = n ? `${n.toLocaleString()} chars` : "";
+}
+
+function resetCompose(){
+  $("#src").value = ""; lastResult = null;
+  $("#dst").innerHTML = '<span class="ph">Your post with emoji will appear here.</span>';
+  $("#why").innerHTML = ""; $("#ccount").textContent = ""; banner("", "");
+  syncComposeButtons();
+}
+
+$("#copyOut").onclick = () => {
+  if (!lastResult) return;
+  copy(lastResult.text); toast("Post copied");
+};
+
+// Clear is now one click away in the toolbar, so make it recoverable.
+$("#clearSrc").onclick = () => {
+  const previous = $("#src").value;
+  if (!previous.trim() && !lastResult) return;
+  resetCompose();
+  toast("Cleared — undo", () => {
+    $("#src").value = previous;
+    syncComposeButtons();
+    $("#src").focus();
+  });
+};
+
+$("#src").addEventListener("input", syncComposeButtons);
+$("#src").addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === "Backspace" || e.key === "Delete")){
+    e.preventDefault(); $("#clearSrc").click();
+  }
+});
+syncComposeButtons();
+
+// Disable the Gemini option when the deployment has no key configured.
+fetch("/api/health").then(r => r.json()).then(d => {
+  const b = $("#modeSeg").querySelector('[data-mode="llm"]');
+  if (!d.llm){
+    b.disabled = true;
+    b.title = "Not configured on this deployment (no LLM_API_KEY)";
+  } else {
+    // Show the configured model so it's obvious what is about to be billed.
+    b.textContent = d.llm_model || "LLM";
+    b.title = `${d.llm_provider || "custom"} · ${d.llm_base_url || "api.openai.com"}`;
+  }
+}).catch(()=>{});
+</script>
+</body>
+</html>

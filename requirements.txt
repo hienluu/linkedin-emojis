@@ -1,0 +1,4 @@
+fastapi[standard]==0.115.*
+openai>=1.60
+python-dotenv>=1.0
+modal>=0.64
